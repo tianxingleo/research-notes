@@ -2,6 +2,7 @@
 """Show recent changes."""
 
 import sys
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -31,6 +32,32 @@ def parse_frontmatter(content):
         return {}
 
 
+def get_research_root():
+    """Get research notes root directory."""
+    # Try environment variable first
+    env_root = os.getenv('RESEARCH_NOTES_ROOT')
+    if env_root:
+        root = Path(env_root)
+        if root.exists():
+            return root
+
+    # Try common locations
+    locations = [
+        Path.home() / "research-notes",
+        Path.cwd().parent / "research-notes",
+        Path("/home/ltx/.openclaw") / "research-notes",
+    ]
+
+    for loc in locations:
+        if loc.exists():
+            return loc
+
+    raise RuntimeError(
+        "Research notes root not found. "
+        "Set RESEARCH_NOTES_ROOT environment variable or run init.py first."
+    )
+
+
 def main():
     days = 7
 
@@ -42,19 +69,7 @@ def main():
                 print("Error: --days must be a number")
                 sys.exit(1)
 
-    # Get paths - try multiple locations
-    workspace = Path(__file__).parent.parent.parent.parent
-    research_root = workspace / "research-notes"
-
-    if not research_root.exists():
-        # Try home directory
-        research_root = Path.home() / "research-notes"
-
-    if not research_root.exists():
-        print("Error: Research notes directory not found.")
-        print("Please run init.py first to create the structure.")
-        sys.exit(1)
-
+    research_root = get_research_root()
     projects_dir = research_root / "projects"
     cutoff_date = datetime.now() - timedelta(days=days)
 
