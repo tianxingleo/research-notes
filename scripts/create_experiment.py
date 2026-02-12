@@ -1,19 +1,13 @@
 #!/usr/bin/env python3
-"""
-Create a new experiment for an idea.
-
-Usage:
-    python3 create_experiment.py <project> <idea> <title>
-"""
+"""Create a new experiment for an idea."""
 
 import sys
-from datetime import datetime
 from pathlib import Path
+from datetime import datetime
 
-
-def slugify(text):
-    """Convert text to slug."""
-    return text.lower().replace(' ', '-').replace('_', '-')
+# Import utils
+sys.path.insert(0, str(Path(__file__).parent))
+from utils import slugify, get_research_root, parse_frontmatter, validate_title
 
 
 def main():
@@ -25,9 +19,14 @@ def main():
     idea_title = sys.argv[2]
     experiment_title = sys.argv[3]
 
-    # Get paths
-    workspace = Path(__file__).parent.parent.parent.parent.parent
-    research_root = workspace / "research-notes"
+    # Validate title
+    is_valid, error_msg = validate_title(experiment_title)
+    if not is_valid:
+        print(f"Error: {error_msg}")
+        sys.exit(1)
+
+    # Get paths using new utility
+    research_root = get_research_root()
     projects_dir = research_root / "projects"
 
     # Find project and idea directories
@@ -43,32 +42,36 @@ def main():
             continue
 
         content = project_md.read_text(encoding="utf-8")
-        # Check if project title matches
-        for line in content.split('\n'):
-            if line.startswith("title:"):
-                project_title = line.split(':', 1)[1].strip().strip('"\'')
-                if project_title.lower() == project_name.lower():
-                    project_dir = p
-                    break
 
-        if project_dir:
+        # Check if project title matches
+        metadata = parse_frontmatter(content)
+        p_title = metadata.get('title', '').strip()
+
+        if p_title.lower() == project_name.lower():
+            project_dir = p
+
             # Find idea
             ideas_dir = project_dir / "ideas"
             if ideas_dir.exists():
                 for i in ideas_dir.iterdir():
-                    if i.is_dir():
-                        idea_md = i / "idea.md"
-                        if idea_md.exists():
-                            idea_content = idea_md.read_text(encoding="utf-8")
-                            for line in idea_content.split('\n'):
-                                if line.startswith("title:"):
-                                    it = line.split(':', 1)[1].strip().strip('"\'')
-                                    if it.lower() == idea_title.lower():
-                                        idea_dir = i
-                                        break
-                            if idea_dir:
-                                break
-            break
+                    if not i.is_dir():
+                        continue
+
+                    idea_md = i / "idea.md"
+                    if not idea_md.exists():
+                        continue
+
+                    content = idea_md.read_text(encoding="utf-8")
+
+                    # Check if idea title matches
+                    metadata = parse_frontmatter(content)
+                    i_title = metadata.get('title', '').strip()
+
+                    if i_title.lower() == idea_title.lower():
+                        idea_dir = i
+                        break
+            if idea_dir:
+                break
 
     if not project_dir:
         print(f"Error: Project '{project_name}' not found")
@@ -76,9 +79,19 @@ def main():
 
     if not idea_dir:
         print(f"Error: Idea '{idea_title}' not found in project '{project_name}'")
+        print(f"Available ideas in project '{project_name}':")
+        ideas_dir = project_dir / "ideas"
+        if ideas_dir.exists():
+            for i in ideas_dir.iterdir():
+                if i.is_dir():
+                    idea_md = i / "idea.md"
+                    if idea_md.exists():
+                        metadata = parse_frontmatter(idea_md.read_text(encoding='utf-8'))
+                        if 'title' in metadata:
+                            print(f"  - {metadata['title']}")
         sys.exit(1)
 
-    # Create experiment directory
+    # Create experiment directory with safe slug
     experiments_dir = idea_dir / "experiments"
     experiment_slug = slugify(experiment_title)
     experiment_dir = experiments_dir / experiment_slug
@@ -89,9 +102,10 @@ def main():
 
     experiment_dir.mkdir()
 
-    # Create experiment.md
+    # Get current time
     now = datetime.now().isoformat()
 
+    # Create experiment.md
     experiment_content = f"""---
 title: {experiment_title}
 idea: {idea_title}
@@ -162,6 +176,17 @@ tags: []
 
     # Create artifacts directory
     (experiment_dir / "artifacts").mkdir()
+
+    # Update idea.md timestamp
+    idea_md = idea_dir / "idea.md"
+    idea_content = idea_md.read_text(encoding="utf-8")
+
+    # Update timestamp
+    idea_content = idea_content.replace(
+        f"updated: {now[:10]}",
+        f"updated: {now}"
+    )
+    idea_md.write_text(idea_content, encoding="utf-8")
 
     print(f"\n✓ Experiment created successfully!")
     print(f"\nTitle: {experiment_title}")

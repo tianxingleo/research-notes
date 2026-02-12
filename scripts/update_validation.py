@@ -7,9 +7,12 @@ Usage:
 """
 
 import sys
-import re
 from datetime import datetime
 from pathlib import Path
+
+# Import utils
+sys.path.insert(0, str(Path(__file__).parent))
+from utils import get_research_root, parse_frontmatter
 
 
 def main():
@@ -34,9 +37,8 @@ def main():
         print(f"Error: Invalid status '{status}'. Valid statuses: {', '.join(valid_statuses)}")
         sys.exit(1)
 
-    # Get paths
-    workspace = Path(__file__).parent.parent.parent.parent.parent
-    research_root = workspace / "research-notes"
+    # Get paths using new utility
+    research_root = get_research_root()
     projects_dir = research_root / "projects"
 
     # Find project and idea directories
@@ -52,32 +54,36 @@ def main():
             continue
 
         content = project_md.read_text(encoding="utf-8")
-        # Check if project title matches
-        for line in content.split('\n'):
-            if line.startswith("title:"):
-                project_title = line.split(':', 1)[1].strip().strip('"\'')
-                if project_title.lower() == project_name.lower():
-                    project_dir = p
-                    break
 
-        if project_dir:
+        # Check if project title matches
+        metadata = parse_frontmatter(content)
+        p_title = metadata.get('title', '').strip()
+
+        if p_title.lower() == project_name.lower():
+            project_dir = p
+
             # Find idea
             ideas_dir = project_dir / "ideas"
             if ideas_dir.exists():
                 for i in ideas_dir.iterdir():
-                    if i.is_dir():
-                        idea_md = i / "idea.md"
-                        if idea_md.exists():
-                            idea_content = idea_md.read_text(encoding="utf-8")
-                            for line in idea_content.split('\n'):
-                                if line.startswith("title:"):
-                                    it = line.split(':', 1)[1].strip().strip('"\'')
-                                    if it.lower() == idea_title.lower():
-                                        idea_dir = i
-                                        break
-                            if idea_dir:
-                                break
-            break
+                    if not i.is_dir():
+                        continue
+
+                    idea_md = i / "idea.md"
+                    if not idea_md.exists():
+                        continue
+
+                    content = idea_md.read_text(encoding="utf-8")
+
+                    # Check if idea title matches
+                    metadata = parse_frontmatter(content)
+                    i_title = metadata.get('title', '').strip()
+
+                    if i_title.lower() == idea_title.lower():
+                        idea_dir = i
+                        break
+            if idea_dir:
+                break
 
     if not project_dir:
         print(f"Error: Project '{project_name}' not found")
@@ -87,56 +93,53 @@ def main():
         print(f"Error: Idea '{idea_title}' not found in project '{project_name}'")
         sys.exit(1)
 
+    now = datetime.now().isoformat()
+
     # Update idea.md status
     idea_md = idea_dir / "idea.md"
     idea_content = idea_md.read_text(encoding="utf-8")
 
-    # Update status in idea.md
-    idea_content = re.sub(
-        r'^status: .*$',
-        f'status: {status}',
-        idea_content,
-        flags=re.MULTILINE
-    )
+    # Replace status using YAML-safe approach
+    # Find the status line and replace it
+    lines = idea_content.split('\n')
+    for i, line in enumerate(lines):
+        if line.startswith("status:"):
+            lines[i] = f"status: {status}"
+            break
 
-    now = datetime.now().isoformat()
-    idea_content = re.sub(
-        r'^updated: .*$',
-        f'updated: {now}',
-        idea_content,
-        flags=re.MULTILINE
-    )
+    # Also update timestamp
+    for i, line in enumerate(lines):
+        if line.startswith("updated:"):
+            lines[i] = f"updated: {now}"
+            break
 
-    idea_md.write_text(idea_content, encoding="utf-8")
+    idea_md.write_text('\n'.join(lines), encoding="utf-8")
 
     # Update validation.md
     validation_md = idea_dir / "validation.md"
     validation_content = validation_md.read_text(encoding="utf-8")
 
-    # Update status in validation.md
-    validation_content = re.sub(
-        r'^status: .*$',
-        f'status: {status}',
-        validation_content,
-        flags=re.MULTILINE
-    )
+    # Replace status in validation.md
+    lines = validation_content.split('\n')
+    for i, line in enumerate(lines):
+        if line.startswith("status:"):
+            lines[i] = f"status: {status}"
+            break
 
+    # Update validated date if status is validated or rejected
     if status in ["validated", "rejected"]:
-        validation_content = re.sub(
-            r'^validated: null$',
-            f'validated: {now}',
-            validation_content,
-            flags=re.MULTILINE
-        )
+        for i, line in enumerate(lines):
+            if line.startswith("validated:"):
+                lines[i] = f"validated: {now}"
+                break
     else:
-        validation_content = re.sub(
-            r'^validated: .*$',
-            'validated: null',
-            validation_content,
-            flags=re.MULTILINE
-        )
+        # Remove validated date if not validated
+        for i, line in enumerate(lines):
+            if line.startswith("validated:"):
+                lines[i] = f"validated: null"
+                break
 
-    validation_md.write_text(validation_content, encoding="utf-8")
+    validation_md.write_text('\n'.join(lines), encoding="utf-8")
 
     print(f"\n✓ Validation status updated successfully!")
     print(f"\nIdea: {idea_title}")
