@@ -7,13 +7,8 @@ Usage:
 """
 
 import sys
-import re
+from utils import *
 from pathlib import Path
-
-
-def slugify(text):
-    """Convert text to slug."""
-    return text.lower().replace(' ', '-').replace('_', '-')
 
 
 def search_in_file(filepath, query):
@@ -28,137 +23,90 @@ def search_in_file(filepath, query):
                 matches.append((i, line.strip()))
 
         return matches
-    except:
+    except Exception as e:
+        print(f"Warning: Failed to read {filepath}: {e}")
         return []
 
 
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: python3 search.py <query> [--scope <scope>]")
-        print("\nScopes: ideas, experiments, papers, all")
-        sys.exit(1)
+    try:
+        if len(sys.argv) < 2:
+            print("Usage: python3 search.py <query> [--scope <scope>]")
+            print("\nScopes: ideas, experiments, papers, all")
+            sys.exit(1)
 
-    query = sys.argv[1]
+        query = sys.argv[1]
 
-    # Parse optional arguments
-    scope = "all"  # default
-    for i, arg in enumerate(sys.argv):
-        if arg == "--scope" and i + 1 < len(sys.argv):
-            scope = sys.argv[i + 1]
+        # Parse optional arguments
+        scope = "all"  # default
+        for i, arg in enumerate(sys.argv):
+            if arg == "--scope" and i + 1 < len(sys.argv):
+                scope = sys.argv[i + 1]
 
-    # Get paths
-    workspace = Path(__file__).parent.parent.parent.parent.parent
-    research_root = workspace / "research-notes"
-    projects_dir = research_root / "projects"
+        # Get research root directory
+        research_root = get_research_root()
+        projects_dir = research_root / "projects"
 
-    print(f"\n🔍 Searching for: '{query}' (scope: {scope})\n")
-    print("=" * 70)
+        if not projects_dir.exists():
+            print(format_error_with_suggestions(
+                "No projects directory found",
+                [
+                    "Run init.py to initialize the research notes directory",
+                    "Create a project first to search"
+                ]
+            ))
+            return
 
-    total_matches = 0
+        print(f"\n🔍 Searching for: '{query}' (scope: {scope})\n")
+        print("=" * 70)
 
-    # Search in projects
-    if scope in ["all", "ideas"]:
-        print("\n📝 IDEAS")
-        print("-" * 70)
+        total_matches = 0
 
-        for project_dir in projects_dir.iterdir():
-            if not project_dir.is_dir():
-                continue
+        # Search in projects
+        if scope in ["all", "ideas"]:
+            print("\n📝 IDEAS")
+            print("-" * 70)
 
-            ideas_dir = project_dir / "ideas"
-            if not ideas_dir.exists():
-                continue
-
-            # Get project name
-            project_md = project_dir / "project.md"
-            if project_md.exists():
-                project_content = project_md.read_text(encoding="utf-8")
-                for line in project_content.split('\n'):
-                    if line.startswith("title:"):
-                        project_name = line.split(':', 1)[1].strip().strip('"\'')
-                        break
-
-            for idea_dir in ideas_dir.iterdir():
-                if not idea_dir.is_dir():
+            for project_dir in projects_dir.iterdir():
+                if not project_dir.is_dir():
                     continue
 
-                idea_md = idea_dir / "idea.md"
-                if idea_md.exists():
-                    matches = search_in_file(idea_md, query)
-                    if matches:
-                        # Get idea title
-                        idea_content = idea_md.read_text(encoding="utf-8")
-                        for line in idea_content.split('\n'):
-                            if line.startswith("title:"):
-                                idea_title = line.split(':', 1)[1].strip().strip('"\'')
-                                break
-
-                        print(f"\n  Project: {project_name}")
-                        print(f"  Idea: {idea_title}")
-                        print(f"  Location: {idea_dir.relative_to(workspace)}")
-
-                        for line_num, line in matches[:3]:  # Show first 3 matches
-                            print(f"    L{line_num}: {line[:80]}...")
-
-                        if len(matches) > 3:
-                            print(f"    ... ({len(matches)} total matches)")
-
-                        total_matches += len(matches)
-
-    # Search in experiments
-    if scope in ["all", "experiments"]:
-        print("\n\n🧪 EXPERIMENTS")
-        print("-" * 70)
-
-        for project_dir in projects_dir.iterdir():
-            if not project_dir.is_dir():
-                continue
-
-            ideas_dir = project_dir / "ideas"
-            if not ideas_dir.exists():
-                continue
-
-            # Get project name
-            project_md = project_dir / "project.md"
-            if project_md.exists():
-                project_content = project_md.read_text(encoding="utf-8")
-                for line in project_content.split('\n'):
-                    if line.startswith("title:"):
-                        project_name = line.split(':', 1)[1].strip().strip('"\'')
-                        break
-
-            for idea_dir in ideas_dir.iterdir():
-                if not idea_dir.is_dir():
+                ideas_dir = project_dir / "ideas"
+                if not ideas_dir.exists():
                     continue
 
-                experiments_dir = idea_dir / "experiments"
-                if not experiments_dir.exists():
-                    continue
+                # Get project name
+                project_md = project_dir / "project.md"
+                project_name = "Unknown"
+                if project_md.exists():
+                    try:
+                        project_content = project_md.read_text(encoding="utf-8")
+                        project_data = parse_frontmatter(project_content)
+                        project_name = project_data.get('title', 'Unknown')
+                    except Exception as e:
+                        print(f"Warning: Failed to read project metadata: {e}")
 
-                for experiment_dir in experiments_dir.iterdir():
-                    if not experiment_dir.is_dir():
+                for idea_dir in ideas_dir.iterdir():
+                    if not idea_dir.is_dir():
                         continue
 
-                    experiment_md = experiment_dir / "experiment.md"
-                    if experiment_md.exists():
-                        matches = search_in_file(experiment_md, query)
+                    idea_md = idea_dir / "idea.md"
+                    if idea_md.exists():
+                        matches = search_in_file(idea_md, query)
                         if matches:
-                            # Get experiment title
-                            experiment_content = experiment_md.read_text(encoding="utf-8")
-                            for line in experiment_content.split('\n'):
-                                if line.startswith("title:"):
-                                    experiment_title = line.split(':', 1)[1].strip().strip('"\'')
-                                    break
-                                if line.startswith("idea:"):
-                                    idea_title = line.split(':', 1)[1].strip().strip('"\'')
-                                    break
+                            # Get idea title
+                            try:
+                                idea_content = idea_md.read_text(encoding="utf-8")
+                                idea_data = parse_frontmatter(idea_content)
+                                idea_title = idea_data.get('title', 'Unknown')
+                            except Exception as e:
+                                idea_title = "Unknown"
 
                             print(f"\n  Project: {project_name}")
                             print(f"  Idea: {idea_title}")
-                            print(f"  Experiment: {experiment_title}")
-                            print(f"  Location: {experiment_dir.relative_to(workspace)}")
+                            print(f"  Location: {idea_dir.relative_to(research_root)}")
 
-                            for line_num, line in matches[:3]:
+                            for line_num, line in matches[:3]:  # Show first 3 matches
                                 print(f"    L{line_num}: {line[:80]}...")
 
                             if len(matches) > 3:
@@ -166,8 +114,82 @@ def main():
 
                             total_matches += len(matches)
 
-    print("\n" + "=" * 70)
-    print(f"\n✓ Found {total_matches} matches total")
+        # Search in experiments
+        if scope in ["all", "experiments"]:
+            print("\n\n🧪 EXPERIMENTS")
+            print("-" * 70)
+
+            for project_dir in projects_dir.iterdir():
+                if not project_dir.is_dir():
+                    continue
+
+                ideas_dir = project_dir / "ideas"
+                if not ideas_dir.exists():
+                    continue
+
+                # Get project name
+                project_md = project_dir / "project.md"
+                project_name = "Unknown"
+                if project_md.exists():
+                    try:
+                        project_content = project_md.read_text(encoding="utf-8")
+                        project_data = parse_frontmatter(project_content)
+                        project_name = project_data.get('title', 'Unknown')
+                    except Exception as e:
+                        print(f"Warning: Failed to read project metadata: {e}")
+
+                for idea_dir in ideas_dir.iterdir():
+                    if not idea_dir.is_dir():
+                        continue
+
+                    experiments_dir = idea_dir / "experiments"
+                    if not experiments_dir.exists():
+                        continue
+
+                    for experiment_dir in experiments_dir.iterdir():
+                        if not experiment_dir.is_dir():
+                            continue
+
+                        experiment_md = experiment_dir / "experiment.md"
+                        if experiment_md.exists():
+                            matches = search_in_file(experiment_md, query)
+                            if matches:
+                                # Get experiment title
+                                try:
+                                    experiment_content = experiment_md.read_text(encoding="utf-8")
+                                    experiment_data = parse_frontmatter(experiment_content)
+                                    experiment_title = experiment_data.get('title', 'Unknown')
+                                    idea_title = experiment_data.get('idea', 'Unknown')
+                                except Exception as e:
+                                    experiment_title = "Unknown"
+                                    idea_title = "Unknown"
+
+                                print(f"\n  Project: {project_name}")
+                                print(f"  Idea: {idea_title}")
+                                print(f"  Experiment: {experiment_title}")
+                                print(f"  Location: {experiment_dir.relative_to(research_root)}")
+
+                                for line_num, line in matches[:3]:
+                                    print(f"    L{line_num}: {line[:80]}...")
+
+                                if len(matches) > 3:
+                                    print(f"    ... ({len(matches)} total matches)")
+
+                                total_matches += len(matches)
+
+        print("\n" + "=" * 70)
+        print(f"\n✓ Found {total_matches} matches total")
+
+    except RuntimeError as e:
+        print(format_error_with_suggestions(
+            str(e),
+            [
+                "Set RESEARCH_NOTES_ROOT environment variable",
+                "Run init.py from the research-notes directory"
+            ]
+        ))
+    except Exception as e:
+        print(f"\n❌ Unexpected error: {e}")
 
 
 if __name__ == "__main__":
