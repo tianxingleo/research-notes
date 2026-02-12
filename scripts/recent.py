@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""
-Show recent changes.
-
-Usage:
-    python3 recent.py [--days <days>]
-"""
+"""Show recent changes."""
 
 import sys
 from datetime import datetime, timedelta
@@ -19,9 +14,25 @@ def parse_iso_date(date_str):
         return None
 
 
+def parse_frontmatter(content):
+    """Extract YAML front matter from markdown."""
+    if not content or not content.startswith('---'):
+        return {}
+
+    parts = content.split('---', 2)
+    if len(parts) < 3:
+        return {}
+
+    try:
+        import yaml
+        metadata = yaml.safe_load(parts[1]) or {}
+        return metadata if isinstance(metadata, dict) else {}
+    except:
+        return {}
+
+
 def main():
-    # Parse arguments
-    days = 7  # default
+    days = 7
 
     for i, arg in enumerate(sys.argv):
         if arg == "--days" and i + 1 < len(sys.argv):
@@ -31,12 +42,20 @@ def main():
                 print("Error: --days must be a number")
                 sys.exit(1)
 
-    # Get paths
-    workspace = Path(__file__).parent.parent.parent.parent.parent
+    # Get paths - try multiple locations
+    workspace = Path(__file__).parent.parent.parent.parent
     research_root = workspace / "research-notes"
-    projects_dir = research_root / "projects"
 
-    # Calculate cutoff date
+    if not research_root.exists():
+        # Try home directory
+        research_root = Path.home() / "research-notes"
+
+    if not research_root.exists():
+        print("Error: Research notes directory not found.")
+        print("Please run init.py first to create the structure.")
+        sys.exit(1)
+
+    projects_dir = research_root / "projects"
     cutoff_date = datetime.now() - timedelta(days=days)
 
     print(f"\n📅 Recent changes (last {days} days)")
@@ -57,17 +76,15 @@ def main():
         content = project_md.read_text(encoding="utf-8")
 
         # Parse metadata
-        project_title = None
-        project_type = None
-        updated = None
+        metadata = parse_frontmatter(content)
+        project_title = metadata.get('title')
+        project_type = metadata.get('type')
+        updated_str = metadata.get('updated')
 
-        for line in content.split('\n'):
-            if line.startswith("title:"):
-                project_title = line.split(':', 1)[1].strip().strip('"\'')
-            elif line.startswith("type:"):
-                project_type = line.split(':', 1)[1].strip().strip('"\'')
-            elif line.startswith("updated:"):
-                updated = parse_iso_date(line.split(':', 1)[1].strip().strip('"\'')
+        if updated_str:
+            updated = parse_iso_date(updated_str)
+        else:
+            updated = None
 
         if updated and updated > cutoff_date and project_title:
             recent_items.append({
@@ -75,7 +92,7 @@ def main():
                 'title': project_title,
                 'project_type': project_type,
                 'updated': updated,
-                'location': project_dir.relative_to(workspace)
+                'location': project_dir.relative_to(research_root)
             })
 
         # Search in ideas
@@ -92,17 +109,15 @@ def main():
                 content = idea_md.read_text(encoding="utf-8")
 
                 # Parse metadata
-                idea_title = None
-                idea_status = None
-                updated = None
+                metadata = parse_frontmatter(content)
+                idea_title = metadata.get('title')
+                idea_status = metadata.get('status')
+                updated_str = metadata.get('updated')
 
-                for line in content.split('\n'):
-                    if line.startswith("title:"):
-                        idea_title = line.split(':', 1)[1].strip().strip('"\'')
-                    elif line.startswith("status:"):
-                        idea_status = line.split(':', 1)[1].strip().strip('"\'')
-                    elif line.startswith("updated:"):
-                        updated = parse_iso_date(line.split(':', 1)[1].strip().strip('"\'')
+                if updated_str:
+                    updated = parse_iso_date(updated_str)
+                else:
+                    updated = None
 
                 if updated and updated > cutoff_date and idea_title:
                     recent_items.append({
@@ -111,7 +126,7 @@ def main():
                         'project': project_title,
                         'status': idea_status,
                         'updated': updated,
-                        'location': idea_dir.relative_to(workspace)
+                        'location': idea_dir.relative_to(research_root)
                     })
 
                 # Search in experiments
@@ -128,17 +143,15 @@ def main():
                         content = experiment_md.read_text(encoding="utf-8")
 
                         # Parse metadata
-                        experiment_title = None
-                        experiment_status = None
-                        updated = None
+                        metadata = parse_frontmatter(content)
+                        experiment_title = metadata.get('title')
+                        experiment_status = metadata.get('status')
+                        updated_str = metadata.get('updated')
 
-                        for line in content.split('\n'):
-                            if line.startswith("title:"):
-                                experiment_title = line.split(':', 1)[1].strip().strip('"\'')
-                            elif line.startswith("status:"):
-                                experiment_status = line.split(':', 1)[1].strip().strip('"\'')
-                            elif line.startswith("updated:"):
-                                updated = parse_iso_date(line.split(':', 1)[1].strip().strip('"\'')
+                        if updated_str:
+                            updated = parse_iso_date(updated_str)
+                        else:
+                            updated = None
 
                         if updated and updated > cutoff_date and experiment_title:
                             recent_items.append({
@@ -148,7 +161,7 @@ def main():
                                 'idea': idea_title,
                                 'status': experiment_status,
                                 'updated': updated,
-                                'location': experiment_dir.relative_to(workspace)
+                                'location': experiment_dir.relative_to(research_root)
                             })
 
     # Sort by updated date (newest first)

@@ -1,22 +1,16 @@
 #!/usr/bin/env python3
 """
 Create a new research project.
-
-Usage:
-    python3 create_project.py <title> [--type <type>] [--tags <tags>]
 """
 
 import sys
-import os
 import json
 import yaml
-from datetime import datetime
 from pathlib import Path
 
-
-def slugify(text):
-    """Convert text to slug."""
-    return text.lower().replace(' ', '-').replace('_', '-')
+# Import utils
+sys.path.insert(0, str(Path(__file__).parent))
+from utils import slugify, get_research_root, parse_frontmatter
 
 
 def main():
@@ -44,12 +38,11 @@ def main():
         print(f"Error: Invalid type '{project_type}'. Valid types: {', '.join(valid_types)}")
         sys.exit(1)
 
-    # Get paths
-    workspace = Path(__file__).parent.parent.parent.parent.parent
-    research_root = workspace / "research-notes"
+    # Get paths using new utility
+    research_root = get_research_root()
     projects_dir = research_root / "projects"
 
-    # Create project directory
+    # Create project directory with safe slug
     project_slug = slugify(title)
     project_dir = projects_dir / project_slug
 
@@ -64,7 +57,7 @@ def main():
     (project_dir / "papers").mkdir()
     (project_dir / "engineering").mkdir()
 
-    # Create project.md
+    # Create project.md with proper YAML front matter
     now = datetime.now().isoformat()
 
     project_content = f"""---
@@ -103,15 +96,16 @@ priority: medium
 
     # Update index.md
     index_path = research_root / "index.md"
-    index_content = index_path.read_text(encoding="utf-8")
+    if index_path.exists():
+        index_content = index_path.read_text(encoding="utf-8")
 
-    # Find projects section and add new project
-    if "## Projects" in index_content:
-        projects_section = "## Projects\n\n"
-        new_entry = f"- [{title}](projects/{project_slug}/project.md) - {project_type} - {now}\n"
-        index_content = index_content.replace(projects_section, projects_section + new_entry)
+        # Find projects section and add new project
+        if "## Projects" in index_content:
+            projects_section = "## Projects\n\n"
+            new_entry = f"- [{title}](projects/{project_slug}/project.md) - {project_type} - {now}\n"
+            index_content = index_content.replace(projects_section, projects_section + new_entry)
 
-    index_path.write_text(index_content, encoding="utf-8")
+        index_path.write_text(index_content, encoding="utf-8")
 
     print(f"\n✓ Project created successfully!")
     print(f"\nTitle: {title}")
@@ -124,4 +118,5 @@ priority: medium
 
 
 if __name__ == "__main__":
+    from datetime import datetime
     main()

@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
 """
 Export validation report.
-
-Usage:
-    python3 export_validation.py <project> [--format <format>]
 """
 
 import sys
@@ -21,21 +18,11 @@ def parse_iso_date(date_str):
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python3 export_validation.py <project> [--format <format>]")
-        print("\nFormats: markdown (default), pdf")
+        print("Usage: python3 export_validation.py <project>")
+        print("Exports validation report to Markdown")
         sys.exit(1)
 
     project_name = sys.argv[1]
-
-    # Parse optional arguments
-    format_type = "markdown"  # default
-    for i, arg in enumerate(sys.argv):
-        if arg == "--format" and i + 1 < len(sys.argv):
-            format_type = sys.argv[i + 1].lower()
-
-    if format_type not in ["markdown", "pdf"]:
-        print(f"Error: Invalid format '{format_type}'. Valid formats: markdown, pdf")
-        sys.exit(1)
 
     # Get paths
     workspace = Path(__file__).parent.parent.parent.parent.parent
@@ -53,7 +40,6 @@ def main():
             continue
 
         content = project_md.read_text(encoding="utf-8")
-        # Check if project title matches
         for line in content.split('\n'):
             if line.startswith("title:"):
                 project_title = line.split(':', 1)[1].strip().strip('"\'')
@@ -63,7 +49,7 @@ def main():
         if project_dir:
             break
 
-    if not project_dir:
+    if project_dir is None:
         print(f"Error: Project '{project_name}' not found")
         sys.exit(1)
 
@@ -80,6 +66,7 @@ def main():
             project_title = line.split(':', 1)[1].strip().strip('"\'')
         elif line.startswith("type:"):
             project_type = line.split(':', 1)[1].strip().strip('"\'')
+            break
 
     # Collect all ideas
     ideas_dir = project_dir / "ideas"
@@ -90,11 +77,11 @@ def main():
     report_lines = []
 
     # Header
-    report_lines.append(f"# Validation Report")
-    report_lines.append(f"\n**Project:** {project_title}")
+    report_lines.append("# Validation Report")
+    report_lines.append(f"**Project:** {project_title}")
     report_lines.append(f"**Type:** {project_type}")
     report_lines.append(f"**Generated:** {datetime.now().isoformat()}")
-    report_lines.append("\n---\n")
+    report_lines.append("---")
 
     # Statistics
     total_ideas = 0
@@ -117,20 +104,15 @@ def main():
         # Parse idea metadata
         idea_title = None
         idea_status = None
-        idea_priority = None
-        idea_updated = None
 
         for line in idea_content.split('\n'):
             if line.startswith("title:"):
                 idea_title = line.split(':', 1)[1].strip().strip('"\'')
             elif line.startswith("status:"):
                 idea_status = line.split(':', 1)[1].strip().strip('"\'')
-            elif line.startswith("priority:"):
-                idea_priority = line.split(':', 1)[1].strip().strip('"\'')
-            elif line.startswith("updated:"):
-                idea_updated = parse_iso_date(line.split(':', 1)[1].strip().strip('"\'')
+                break
 
-        if not idea_title:
+        if idea_title is None:
             continue
 
         total_ideas += 1
@@ -146,8 +128,8 @@ def main():
 
     # Statistics section
     report_lines.append("## Summary")
-    report_lines.append(f"\n| Metric | Count |")
-    report_lines.append(f"|--------|-------|")
+    report_lines.append("| Metric | Count |")
+    report_lines.append("|--------|-------|")
     report_lines.append(f"| Total Ideas | {total_ideas} |")
     report_lines.append(f"| Validated | {validated_count} |")
     report_lines.append(f"| Rejected | {rejected_count} |")
@@ -159,9 +141,9 @@ def main():
         validation_rate = (validated_count / total_ideas) * 100
         report_lines.append(f"| Validation Rate | {validation_rate:.1f}% |")
 
-    report_lines.append("\n---\n")
+    report_lines.append("---")
 
-    # Detailed sections by status
+    # Detailed sections
     for idea_dir in sorted(ideas_dir.iterdir()):
         if not idea_dir.is_dir():
             continue
@@ -178,28 +160,20 @@ def main():
         # Parse idea metadata
         idea_title = None
         idea_status = None
-        idea_priority = None
-        idea_updated = None
 
         for line in idea_content.split('\n'):
             if line.startswith("title:"):
                 idea_title = line.split(':', 1)[1].strip().strip('"\'')
             elif line.startswith("status:"):
                 idea_status = line.split(':', 1)[1].strip().strip('"\'')
-            elif line.startswith("priority:"):
-                idea_priority = line.split(':', 1)[1].strip().strip('"\'')
-            elif line.startswith("updated:"):
-                idea_updated = parse_iso_date(line.split(':', 1)[1].strip().strip('"\'')
+                break
 
-        if not idea_title:
+        if idea_title is None:
             continue
 
         # Add to report
         report_lines.append(f"## {idea_title}")
-        report_lines.append(f"\n**Status:** {idea_status}")
-        report_lines.append(f"**Priority:** {idea_priority}")
-        if idea_updated:
-            report_lines.append(f"**Last Updated:** {idea_updated.strftime('%Y-%m-%d')}")
+        report_lines.append(f"**Status:** {idea_status}")
         report_lines.append(f"**Location:** `ideas/{idea_dir.name}/`")
 
         # Count experiments
@@ -208,7 +182,7 @@ def main():
             exp_count = sum(1 for e in experiments_dir.iterdir() if e.is_dir())
             report_lines.append(f"**Experiments:** {exp_count}")
 
-        report_lines.append("\n### Validation Summary")
+        report_lines.append("### Validation Summary")
 
         # Extract validation summary
         in_summary = False
@@ -221,27 +195,15 @@ def main():
                     break
                 report_lines.append(line)
 
-        report_lines.append("\n---\n")
+        report_lines.append("---")
 
     # Write report
     report_text = "\n".join(report_lines)
+    output_file = research_root / f"validation-report-{project_name.lower().replace(' ', '-')}.md"
+    output_file.write_text(report_text, encoding="utf-8")
 
-    if format_type == "markdown":
-        output_file = research_root / f"validation-report-{project_name.lower().replace(' ', '-')}.md"
-        output_file.write_text(report_text, encoding="utf-8")
-        print(f"\n✓ Validation report exported to Markdown")
-        print(f"  Output: {output_file}")
-    elif format_type == "pdf":
-        # For PDF, we'd need a library like markdown2pdf or similar
-        # For now, export as markdown with instructions
-        output_file = research_root / f"validation-report-{project_name.lower().replace(' ', '-')}.md"
-        output_file.write_text(report_text, encoding="utf-8")
-        print(f"\n⚠️  PDF export requires additional dependencies")
-        print(f"  Markdown report exported: {output_file}")
-        print(f"\n  To convert to PDF, use:")
-        print(f"    1. pandoc: pandoc {output_file} -o output.pdf")
-        print(f"    2. Markdown-to-PDF tools (browser extension, etc.)")
-        print(f"    3. Install markdown2pdf: pip install markdown2pdf")
+    print(f"Validation report exported to Markdown")
+    print(f"Output: {output_file}")
 
 
 if __name__ == "__main__":
